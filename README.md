@@ -1,112 +1,105 @@
 ## Написать скрипт для CRON, который раз в час будет формировать письмо и отправлять на заданную почту.
 
-Получим десяток самых частых адресов с наибольшим кол-вом запросов
-
+<details>
+     <summary>Скрипт выглядит так:</summary>
+     
 ```
-[root@otusbash ~]# cat access-4560-644067.log | cut -d ' ' -f 1 | uniq -c | sort -nr | head -n 10
+#!/bin/bash
+
+# Путь к access.log
+LOG_FILE="/home/nakhorenko/Linux2022-12/otus-bash/access-4560-644067.log"
+
+# Почтовый адрес получателя
+EMAIL="vadnakhorenko@gmail.com"
+
+# Проверка наличия мьютекса (файла блокировки)
+if [ -f /tmp/script.lock ]; then
+  echo "Скрипт уже запущен. Выход."
+  exit 1
+fi
+
+# Создание файла блокировки
+touch /tmp/script.lock
+
+# Временная метка последнего запуска скрипта
+LAST_RUN=$(cat /tmp/last_run_timestamp 2>/dev/null)
+CURRENT_TIME=$(date +%s)
+echo "$CURRENT_TIME" > /tmp/last_run_timestamp
+
+# Формирование письма
+MESSAGE="Отчёт об активности сервера за период с $(date -d @$LAST_RUN) до $(date)"
+
+# Список IP адресов с наибольшим количеством запросов
+TOP_IPs=$(awk -v last_run="$LAST_RUN" '$4 > last_run {print $1}' "$LOG_FILE" | sort | uniq -c | sort -nr | head)
+MESSAGE+="\n\nСписок IP адресов с наибольшим количеством запросов:\n$TOP_IPs"
+
+# Список URL с наибольшим количеством запросов
+TOP_URLs=$(awk -v last_run="$LAST_RUN" '$4 > last_run {print $7}' "$LOG_FILE" | sort | uniq -c | sort -nr | head)
+MESSAGE+="\n\nСписок URL с наибольшим количеством запросов:\n$TOP_URLs"
+
+# Ошибки сервера/приложения
+#ERRORS=$(awk -v last_run="$LAST_RUN" '$4 > last_run && $9 >= 400 {print $9}' "$LOG_FILE" | sort | uniq -c)
+#MESSAGE+="\n\nОшибки сервера/приложения:\n$ERRORS"
+
+# Список всех кодов HTTP ответа
+HTTP_CODES=$(awk -v last_run="$LAST_RUN" '$4 > last_run {print $9}' "$LOG_FILE" | sort | uniq -c)
+MESSAGE+="\n\nСписок всех кодов HTTP ответа:\n$HTTP_CODES"
+
+# Отправка письма
+echo -e "$MESSAGE" > log.txt
+
+# Удаление файла блокировки
+rm /tmp/script.lock
+```
+</details>
+
+В cron делаем так:
+     
+```
+1 */1 * * * /home/nakhorenko/Linux2022-12/otus-bash/logscript.sh
+```
+
+<details>
+     <summary>Вывод выглядит так:</summary>
+     
+```     
+Отчёт об активности сервера за период с Пн 22 мая 2023 11:37:38 CEST до Пн 22 мая 2023 11:37:39 CEST
+
+Список IP адресов с наибольшим количеством запросов:
+     45 93.158.167.130
      39 109.236.252.130
-     36 212.57.117.19
+     37 212.57.117.19
      33 188.43.241.106
+     31 87.250.233.68
+     24 62.75.198.172
+     22 148.251.223.21
+     20 185.6.8.9
      17 217.118.66.161
-     17 185.6.8.9
      16 95.165.18.146
-     16 148.251.223.21
-     12 62.210.252.196
-     12 185.142.236.35
-     12 162.243.13.195
-[root@otusbash ~]# 
-```
-Список запрашиваемых URL (с наибольшим кол-вом запросов) с указанием кол-ва запросов c момента последнего запуска скриптаё
 
-```
-[root@otusbash ~]# cat access-4560-644067.log  | cut -d ' ' -f 11 | sort -n | uniq -c -d | sort -nr
-    498 "-"
-     73 "https://dbadmins.ru/"
-     15 "https://dbadmins.ru/2016/10/26/%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D0%B5%D0%BD%D0%B8%D0%B5-%D1%81%D0%B5%D1%82%D0%B5%D0%B2%D1%8B%D1%85-%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B5%D0%BA-%D0%B4%D0%BB%D1%8F-oracle-rac/"
-     14 "https://dbadmins.ru/2016/10/17/%D0%9F%D1%80%D0%BE%D0%B4%D0%BE%D0%BB%D0%B6%D0%B0%D0%B5%D0%BC-%D1%8D%D0%BA%D1%81%D0%BF%D0%B5%D1%80%D0%B8%D0%BC%D0%B5%D0%BD%D1%82%D1%8B-%D1%81-lacp/"
-     11 uct="-"
-      4 "https://dbadmins.ru/wp-content/themes/llorix-one-lite/css/font-awesome.min.css?ver=4.4.0"
-      4 "http://dbadmins.ru/"
-      3 "https://dbadmins.ru/wp-content/themes/llorix-one-lite/style.css?ver=1.0.0"
-      2 "https://dbadmins.ru/2016/12/14/virtualenv-%D0%B4%D0%BB%D1%8F-%D0%BF%D0%BB%D0%B0%D0%B3%D0%B8%D0%BD%D0%BE%D0%B2-python-scrappy-%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82-%D0%BD%D0%B0-debian-jessie/"
-      2 "http://dbadmins.ru/wp-content/plugins/uploadify/readme.txt"
-      2 "http://dbadmins.ru/wp-content/plugins/uploadify/includes/check.php"
-      2 "http://dbadmins.ru/wp-admin/admin-post.php?page=301bulkoptions"
-      2 "http://dbadmins.ru/wp-admin/admin-ajax.php?page=301bulkoptions"
-      2 "http://dbadmins.ru/1"
-      2 "http://dbadmins.ru"
-```
-Откуда взять ошибки, если нет error.log - не понятно :)
+Список URL с наибольшим количеством запросов:
+    157 /
+    120 /wp-login.php
+     57 /xmlrpc.php
+     26 /robots.txt
+     12 /favicon.ico
+     11 400
+      9 /wp-includes/js/wp-embed.min.js?ver=5.0.4
+      7 /wp-admin/admin-post.php?page=301bulkoptions
+      7 /1
+      6 /wp-content/uploads/2016/10/robo5.jpg
 
-Список всех кодов HTTP ответа с указанием их кол-ва с момента последнего запуска скрипта.
-```
-[root@otusbash ~]# cat access-4560-644067.log  | cut -d " " -f 9 | sort -n | uniq -c -d | sort -nr
+Список всех кодов HTTP ответа:
+     11 "-"
     498 200
      95 301
-     51 404
-     11 "-"
+      1 304
       7 400
-      3 500
-      2 499
-```
-Собрав всё в скрипт получаем подобный вывод. Доавить в cron задачу 
-
-```
-* * * * * /root/mailscript.sh
-```
-
-```
-############################################
-####		 Отчет сформирован с 14/Aug/2019:04:12:10 по 14/Aug/2019:05:17:39
-############################################
-
-
-
-############################################
-####		 Топ ip адресов:
-############################################
-
-
-     39 109.236.252.130
-     36 212.57.117.19
-     33 188.43.241.106
-     17 217.118.66.161
-     17 185.6.8.9
-     16 95.165.18.146
-     16 148.251.223.21
-     12 62.210.252.196
-     12 185.142.236.35
-     12 162.243.13.195
-
-############################################
-####		 Топ URL
-############################################
-
-    498 "-"
-     73 "https://dbadmins.ru/"
-     15 "https://dbadmins.ru/2016/10/26/%D0%B8%D0%B7%D0%BC%D0%B5%D0%BD%D0%B5%D0%BD%D0%B8%D0%B5-%D1%81%D0%B5%D1%82%D0%B5%D0%B2%D1%8B%D1%85-%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B5%D0%BA-%D0%B4%D0%BB%D1%8F-oracle-rac/"
-     14 "https://dbadmins.ru/2016/10/17/%D0%9F%D1%80%D0%BE%D0%B4%D0%BE%D0%BB%D0%B6%D0%B0%D0%B5%D0%BC-%D1%8D%D0%BA%D1%81%D0%BF%D0%B5%D1%80%D0%B8%D0%BC%D0%B5%D0%BD%D1%82%D1%8B-%D1%81-lacp/"
-     11 uct="-"
-      4 "https://dbadmins.ru/wp-content/themes/llorix-one-lite/css/font-awesome.min.css?ver=4.4.0"
-      4 "http://dbadmins.ru/"
-      3 "https://dbadmins.ru/wp-content/themes/llorix-one-lite/style.css?ver=1.0.0"
-      2 "https://dbadmins.ru/2016/12/14/virtualenv-%D0%B4%D0%BB%D1%8F-%D0%BF%D0%BB%D0%B0%D0%B3%D0%B8%D0%BD%D0%BE%D0%B2-python-scrappy-%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82-%D0%BD%D0%B0-debian-jessie/"
-      2 "http://dbadmins.ru/wp-content/plugins/uploadify/readme.txt"
-      2 "http://dbadmins.ru/wp-content/plugins/uploadify/includes/check.php"
-      2 "http://dbadmins.ru/wp-admin/admin-post.php?page=301bulkoptions"
-      2 "http://dbadmins.ru/wp-admin/admin-ajax.php?page=301bulkoptions"
-      2 "http://dbadmins.ru/1"
-      2 "http://dbadmins.ru"
-
-############################################
-####		 Топ кодов ответа:
-############################################
-
-     498 200
-     95 301
+      1 403
      51 404
-     11 "-"
-      7 400
-      3 500
+      1 405
       2 499
- ```
+      3 500
+```
+     
+</details>
